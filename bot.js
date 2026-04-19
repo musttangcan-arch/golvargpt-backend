@@ -23,7 +23,7 @@ function saveSignals(signals) {
 
 async function sendNewGoalWatchSignal() {
   try {
-    const response = await axios.get("https://golvargpt-backend.onrender.com signals/goal-watch");
+    const response = await axios.get("https://golvargpt-backend.onrender.com/signals/goal-watch");
     const signals = response.data.data || [];
     const savedSignals = loadSignals();
 
