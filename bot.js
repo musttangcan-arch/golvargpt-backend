@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
 const FILE_PATH = "sentSignals.json";
+const BASE_URL = "https://golvargpt-backend.onrender.com";
 
 function loadSignals() {
   try {
@@ -23,7 +24,7 @@ function saveSignals(signals) {
 
 async function sendNewGoalWatchSignal() {
   try {
-    const response = await axios.get("https://golvargpt-backend.onrender.com/signals/goal-watch");
+    const response = await axios.get(`${BASE_URL}/signals/goal-watch`);
     const signals = response.data.data || [];
     const savedSignals = loadSignals();
 
@@ -33,11 +34,14 @@ async function sendNewGoalWatchSignal() {
     }
 
     const newMatch = signals.find((match) => {
-      return !savedSignals.some(
+      const alreadySent = savedSignals.some(
         (saved) =>
-          saved.fixture_id === match.fixture_id &&
-          saved.signal_type === "HT05"
+          String(saved.fixture_id) === String(match.fixture_id) &&
+          saved.signal_type === "HT05" &&
+          (saved.status === "pending" || saved.status === "won" || saved.status === "lost")
       );
+
+      return !alreadySent;
     });
 
     if (!newMatch) {
@@ -58,12 +62,13 @@ async function sendNewGoalWatchSignal() {
     await bot.sendMessage(process.env.CHANNEL_ID, message);
 
     savedSignals.push({
-      fixture_id: newMatch.fixture_id,
+      fixture_id: String(newMatch.fixture_id),
       league: newMatch.league,
       home_team: newMatch.home_team,
       away_team: newMatch.away_team,
       signal_type: "HT05",
-      status: "pending"
+      status: "pending",
+      sent_at: Date.now()
     });
 
     saveSignals(savedSignals);
@@ -80,7 +85,7 @@ async function checkResults() {
     for (const signal of savedSignals) {
       if (signal.status !== "pending") continue;
 
-      const response = await axios.get(`https://golvargpt-backend.onrender.com/fixture/${signal.fixture_id}`);
+      const response = await axios.get(`${BASE_URL}/fixture/${signal.fixture_id}`);
       const match = response.data.data;
 
       if (!match) continue;
