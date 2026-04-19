@@ -1,0 +1,34 @@
+[
+  {
+    "fixture_id": 1387963,
+    "league": "Ligue 1",
+    "home_team": "Metz",
+    "away_team": "Paris FC",
+    "signal_type": "HT05",
+    "status": "won"
+  },
+  {
+    "fixture_id": 1387967,
+    "league": "Ligue 1",
+    "home_team": "Strasbourg",
+    "away_team": "Rennes",
+    "signal_type": "HT05",
+    "status": "won"
+  },
+  {
+    "fixture_id": 1388570,
+    "league": "Bundesliga",
+    "home_team": "Bayern München",
+    "away_team": "VfB Stuttgart",
+    "signal_type": "HT05",
+    "status": "won"
+  },
+  {
+    "fixture_id": 1534156,
+    "league": "Premier League",
+    "home_team": "Hamrun Spartans",
+    "away_team": "Naxxar Lions",
+    "signal_type": "HT05",
+    "status": "won"
+  }
+]
