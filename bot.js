@@ -195,5 +195,10 @@ async function runBot() {
   await checkResults();
 }
 
+async function runBot() {
+  await sendNewGoalWatchSignal();
+  await checkResults();
+}
+
 runBot();
-setInterval(runBot, 120000);
+setInterval(runBot, 60000);
