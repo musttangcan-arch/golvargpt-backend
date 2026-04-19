@@ -4,14 +4,19 @@ const fs = require("fs");
 require("dotenv").config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
+
 const FILE_PATH = "sentSignals.json";
 const BASE_URL = "https://golvargpt-backend.onrender.com";
 
+// ==============================
+// FILE SYSTEM
+// ==============================
 function loadSignals() {
   try {
     if (!fs.existsSync(FILE_PATH)) {
       fs.writeFileSync(FILE_PATH, "[]");
     }
+
     return JSON.parse(fs.readFileSync(FILE_PATH, "utf8"));
   } catch (error) {
     return [];
@@ -22,9 +27,15 @@ function saveSignals(signals) {
   fs.writeFileSync(FILE_PATH, JSON.stringify(signals, null, 2));
 }
 
+// ==============================
+// SEND NEW SIGNAL
+// ==============================
 async function sendNewGoalWatchSignal() {
   try {
-    const response = await axios.get(`${BASE_URL}/signals/goal-watch`);
+    const response = await axios.get(
+      `${BASE_URL}/signals/goal-watch`
+    );
+
     const signals = response.data.data || [];
     const savedSignals = loadSignals();
 
@@ -38,10 +49,20 @@ async function sendNewGoalWatchSignal() {
         (saved) =>
           String(saved.fixture_id) === String(match.fixture_id) &&
           saved.signal_type === "HT05" &&
-          (saved.status === "pending" || saved.status === "won" || saved.status === "lost")
+          (
+            saved.status === "pending" ||
+            saved.status === "won" ||
+            saved.status === "lost"
+          )
       );
 
-      return !alreadySent;
+      const recentSent = savedSignals.some(
+        (saved) =>
+          String(saved.fixture_id) === String(match.fixture_id) &&
+          Date.now() - (saved.sent_at || 0) < 3600000
+      );
+
+      return !alreadySent && !recentSent;
     });
 
     if (!newMatch) {
@@ -72,12 +93,20 @@ async function sendNewGoalWatchSignal() {
     });
 
     saveSignals(savedSignals);
+
     console.log("New signal sent.");
+
   } catch (error) {
-    console.error("Send signal error:", error.response?.data || error.message);
+    console.error(
+      "Send signal error:",
+      error.response?.data || error.message
+    );
   }
 }
 
+// ==============================
+// CHECK RESULTS
+// ==============================
 async function checkResults() {
   try {
     const savedSignals = loadSignals();
@@ -85,12 +114,17 @@ async function checkResults() {
     for (const signal of savedSignals) {
       if (signal.status !== "pending") continue;
 
-      const response = await axios.get(`${BASE_URL}/fixture/${signal.fixture_id}`);
+      const response = await axios.get(
+        `${BASE_URL}/fixture/${signal.fixture_id}`
+      );
+
       const match = response.data.data;
 
       if (!match) continue;
 
-      const totalGoals = (match.home_goals || 0) + (match.away_goals || 0);
+      const totalGoals =
+        (match.home_goals || 0) +
+        (match.away_goals || 0);
 
       const firstHalfEnded =
         match.short_status === "HT" ||
@@ -98,6 +132,7 @@ async function checkResults() {
         match.short_status === "FT" ||
         match.minute >= 45;
 
+      // WON
       if (totalGoals >= 1) {
         const wonMessage =
 `✅ WON
@@ -107,10 +142,20 @@ async function checkResults() {
 🎯 İY 0.5 ÜST Kazandı
 📊 ${match.home_goals}-${match.away_goals}`;
 
-        await bot.sendMessage(process.env.CHANNEL_ID, wonMessage);
+        await bot.sendMessage(
+          process.env.CHANNEL_ID,
+          wonMessage
+        );
+
         signal.status = "won";
-        console.log(`WON sent for ${signal.fixture_id}`);
-      } else if (firstHalfEnded && totalGoals === 0) {
+
+        console.log(
+          `WON sent for ${signal.fixture_id}`
+        );
+      }
+
+      // LOST
+      else if (firstHalfEnded && totalGoals === 0) {
         const lostMessage =
 `❌ LOST
 
@@ -119,18 +164,32 @@ async function checkResults() {
 🎯 İY 0.5 ÜST Kaybetti
 📊 ${match.home_goals}-${match.away_goals}`;
 
-        await bot.sendMessage(process.env.CHANNEL_ID, lostMessage);
+        await bot.sendMessage(
+          process.env.CHANNEL_ID,
+          lostMessage
+        );
+
         signal.status = "lost";
-        console.log(`LOST sent for ${signal.fixture_id}`);
+
+        console.log(
+          `LOST sent for ${signal.fixture_id}`
+        );
       }
     }
 
     saveSignals(savedSignals);
+
   } catch (error) {
-    console.error("Check result error:", error.response?.data || error.message);
+    console.error(
+      "Check result error:",
+      error.response?.data || error.message
+    );
   }
 }
 
+// ==============================
+// LOOP
+// ==============================
 async function runBot() {
   await sendNewGoalWatchSignal();
   await checkResults();
