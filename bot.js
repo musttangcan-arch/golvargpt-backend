@@ -1,43 +1,28 @@
 const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
-const fs = require("fs");
 require("dotenv").config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
 
-const FILE_PATH = "sentSignals.json";
-const BASE_URL = "https://golvargpt-backend.onrender.com";
+const API = "https://golvargpt-backend.onrender.com";
 
-// ==============================
-// FILE SYSTEM
-// ==============================
-function loadSignals() {
-  try {
-    if (!fs.existsSync(FILE_PATH)) {
-      fs.writeFileSync(FILE_PATH, "[]");
+// RAM cache (restart olursa sıfırlanır ama 6 saat koruma var)
+const sentCache = new Map();
+
+function cleanupCache() {
+  const now = Date.now();
+
+  for (const [key, time] of sentCache.entries()) {
+    if (now - time > 21600000) {
+      sentCache.delete(key);
     }
-
-    return JSON.parse(fs.readFileSync(FILE_PATH, "utf8"));
-  } catch (error) {
-    return [];
   }
 }
 
-function saveSignals(signals) {
-  fs.writeFileSync(FILE_PATH, JSON.stringify(signals, null, 2));
-}
-
-// ==============================
-// SEND NEW SIGNAL
-// ==============================
 async function sendNewGoalWatchSignal() {
   try {
-    const response = await axios.get(
-      `${BASE_URL}/signals/goal-watch`
-    );
-
+    const response = await axios.get(`${API}/signals/goal-watch`);
     const signals = response.data.data || [];
-    const savedSignals = loadSignals();
 
     if (signals.length === 0) {
       console.log("No signals found.");
@@ -45,24 +30,8 @@ async function sendNewGoalWatchSignal() {
     }
 
     const newMatch = signals.find((match) => {
-      const alreadySent = savedSignals.some(
-        (saved) =>
-          String(saved.fixture_id) === String(match.fixture_id) &&
-          saved.signal_type === "HT05" &&
-          (
-            saved.status === "pending" ||
-            saved.status === "won" ||
-            saved.status === "lost"
-          )
-      );
-
-      const recentSent = savedSignals.some(
-        (saved) =>
-          String(saved.fixture_id) === String(match.fixture_id) &&
-          Date.now() - (saved.sent_at || 0) < 3600000
-      );
-
-      return !alreadySent && !recentSent;
+      const key = `${match.fixture_id}-HT05`;
+      return !sentCache.has(key);
     });
 
     if (!newMatch) {
@@ -70,129 +39,56 @@ async function sendNewGoalWatchSignal() {
       return;
     }
 
-    const message =
-`🚨 İY 0.5 ÜST | HT 0.5 OVER
+    const message = `
+🚨 İY 0.5 ÜST | HT 0.5 OVER
 
 🏆 ${newMatch.league}
 ⚽ ${newMatch.home_team} vs ${newMatch.away_team}
-⏱ ${newMatch.minute}'
 📊 ${newMatch.home_goals}-${newMatch.away_goals}
 
-🔥 GolvarGPT Live Signal`;
+🔥 GolvarGPT Live Signal
+`;
 
     await bot.sendMessage(process.env.CHANNEL_ID, message);
 
-    savedSignals.push({
-      fixture_id: String(newMatch.fixture_id),
-      league: newMatch.league,
-      home_team: newMatch.home_team,
-      away_team: newMatch.away_team,
-      signal_type: "HT05",
-      status: "pending",
-      sent_at: Date.now()
-    });
-
-    saveSignals(savedSignals);
+    const key = `${newMatch.fixture_id}-HT05`;
+    sentCache.set(key, Date.now());
 
     console.log("New signal sent.");
-
   } catch (error) {
-    console.error(
-      "Send signal error:",
-      error.response?.data || error.message
-    );
+    console.log("Send signal error:", error.message);
   }
 }
 
-// ==============================
-// CHECK RESULTS
-// ==============================
 async function checkResults() {
   try {
-    const savedSignals = loadSignals();
+    cleanupCache();
 
-    for (const signal of savedSignals) {
-      if (signal.status !== "pending") continue;
+    const response = await axios.get(`${API}/signals/goal-watch`);
+    const matches = response.data.data || [];
 
-      const response = await axios.get(
-        `${BASE_URL}/fixture/${signal.fixture_id}`
-      );
+    for (const match of matches) {
+      const key = `${match.fixture_id}-HT05`;
 
-      const match = response.data.data;
-
-      if (!match) continue;
+      if (!sentCache.has(key)) continue;
 
       const totalGoals =
-        (match.home_goals || 0) +
-        (match.away_goals || 0);
+        Number(match.home_goals || 0) +
+        Number(match.away_goals || 0);
 
-      const firstHalfEnded =
-        match.short_status === "HT" ||
-        match.short_status === "2H" ||
-        match.short_status === "FT" ||
-        match.minute >= 45;
-
-      // WON
       if (totalGoals >= 1) {
-        const wonMessage =
-`✅ WON
-
-🏆 ${signal.league}
-⚽ ${signal.home_team} vs ${signal.away_team}
-🎯 İY 0.5 ÜST Kazandı
-📊 ${match.home_goals}-${match.away_goals}`;
-
         await bot.sendMessage(
           process.env.CHANNEL_ID,
-          wonMessage
+          `✅ WON\n${match.home_team} vs ${match.away_team}`
         );
 
-        signal.status = "won";
-
-        console.log(
-          `WON sent for ${signal.fixture_id}`
-        );
-      }
-
-      // LOST
-      else if (firstHalfEnded && totalGoals === 0) {
-        const lostMessage =
-`❌ LOST
-
-🏆 ${signal.league}
-⚽ ${signal.home_team} vs ${signal.away_team}
-🎯 İY 0.5 ÜST Kaybetti
-📊 ${match.home_goals}-${match.away_goals}`;
-
-        await bot.sendMessage(
-          process.env.CHANNEL_ID,
-          lostMessage
-        );
-
-        signal.status = "lost";
-
-        console.log(
-          `LOST sent for ${signal.fixture_id}`
-        );
+        sentCache.delete(key);
+        console.log("WON sent for", key);
       }
     }
-
-    saveSignals(savedSignals);
-
   } catch (error) {
-    console.error(
-      "Check result error:",
-      error.response?.data || error.message
-    );
+    console.log("Result check error:", error.message);
   }
-}
-
-// ==============================
-// LOOP
-// ==============================
-async function runBot() {
-  await sendNewGoalWatchSignal();
-  await checkResults();
 }
 
 async function runBot() {
