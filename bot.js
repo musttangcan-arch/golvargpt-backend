@@ -80,7 +80,7 @@ async function checkResults() {
     for (const signal of savedSignals) {
       if (signal.status !== "pending") continue;
 
-      const response = await axios.get(`http://localhost:5000/fixture/${signal.fixture_id}`);
+      const response = await axios.get(`https://golvargpt-backend.onrender.com/fixture/${signal.fixture_id}`);
       const match = response.data.data;
 
       if (!match) continue;
