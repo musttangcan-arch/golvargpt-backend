@@ -13,14 +13,14 @@ const supabase = createClient(
 );
 
 async function alreadySentRecently(fixtureId, signalType) {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await supabase
     .from("sent_signals")
     .select("id")
     .eq("fixture_id", String(fixtureId))
     .eq("signal_type", signalType)
-    .gte("sent_at", oneHourAgo)
+    .gte("sent_at", oneDayAgo)
     .limit(1);
 
   if (error) {
